@@ -18,10 +18,26 @@ Engineer2Manual::Engineer2Manual(ros::NodeHandle& nh, ros::NodeHandle& nh_refere
   gripper_state_sub_ = nh.subscribe<rm_msgs::GpioData>("/controllers/gpio_controller/gpio_states", 10,
                                                        &Engineer2Manual::gpioStateCallback, this);
   gripper_ui_pub_ = nh.advertise<rm_msgs::VisualizeStateData>("/visualize_state", 10);
+  custom_controller_sub_ = nh.subscribe<std_msgs::Float64MultiArray>("/rm_referee/custom_controller_data", 10, &Engineer2Manual::customControllerCallback,this);
+  trajectory_cmd_pub_ = nh.advertise<trajectory_msgs::JointTrajectory>("/controllers/arm_trajectory_controller/command", 10);
   // Servo
   ros::NodeHandle nh_servo(nh, "servo");
   servo_command_sender_ = new rm_common::Vel3DCommandSender(nh_servo);
   servo_reset_caller_ = new rm_common::ServiceCallerBase<std_srvs::Empty>(nh_servo, "/servo_server/reset_servo_status");
+  // Custom Controller
+  joint1_state_ = joint_state_.position[2];
+  ros::NodeHandle nh_custom_data_offset(nh, "custom_data_offset");
+  nh_custom_data_offset.param("data1_offset", custom_data_offset_[0], 0.0);
+  nh_custom_data_offset.param("data2_offset", custom_data_offset_[1], 0.0);
+  nh_custom_data_offset.param("data3_offset", custom_data_offset_[2], 0.0);
+  nh_custom_data_offset.param("data4_offset", custom_data_offset_[3], 0.0);
+  nh_custom_data_offset.param("data5_offset", custom_data_offset_[4], 0.0);
+  ros::NodeHandle nh_custom_controller_offset(nh, "custom_controller_offset");
+  nh_custom_controller_offset.param("joint2", custom_controller_offset_[0], 0.0);
+  nh_custom_controller_offset.param("joint3", custom_controller_offset_[1], 0.0);
+  nh_custom_controller_offset.param("joint4", custom_controller_offset_[2], 0.0);
+  nh_custom_controller_offset.param("joint5", custom_controller_offset_[3], 0.0);
+  nh_custom_controller_offset.param("joint6", custom_controller_offset_[4], 0.0);
   // Vel
   ros::NodeHandle chassis_nh(nh, "chassis");
   chassis_nh.param("fast_speed_scale", fast_speed_scale_, 1.0);
@@ -101,6 +117,8 @@ Engineer2Manual::Engineer2Manual(ros::NodeHandle& nh, ros::NodeHandle& nh_refere
 void Engineer2Manual::run()
 {
   ChassisGimbalManual::run();
+  if( servo_mode_ == CUSTOM )
+    updateCustomController();
   calibration_gather_->update(ros::Time::now());
   engineer_ui_pub_.publish(engineer_ui_);
   gripper_ui_pub_.publish(gripper_ui_);
@@ -211,12 +229,40 @@ void Engineer2Manual::updateServo(const rm_msgs::DbusData::ConstPtr& dbus_data)
   servo_command_sender_->setAngularVel(-angular_z_scale_, -dbus_data->ch_r_y, dbus_data->ch_r_x);
 }
 
+void Engineer2Manual::updateCustomController()
+{
+  trajectory_msgs::JointTrajectoryPoint joint_trajectory_point;
+  trajectory_msgs::JointTrajectory joint_trajectory;
+  joint_trajectory.header.seq = custom_seq_;
+  joint_trajectory.header.stamp = ros::Time::now();
+  joint_trajectory.joint_names = { "joint1", "joint2", "joint3", "joint4", "joint5", "joint6"};
+  joint_trajectory_point.positions.push_back( joint1_state_ ) ;
+  joint_trajectory_point.time_from_start.sec = 1;
+  for( double i : custom_joint_state_ )
+  {
+    joint_trajectory_point.positions.push_back( i );
+  }
+  joint_trajectory.points.push_back( joint_trajectory_point );
+  trajectory_cmd_pub_.publish( joint_trajectory );
+  custom_seq_++;
+  if( custom_seq_ > 100000 )
+    custom_seq_ = 1;
+}
+
+void Engineer2Manual::updateJoint1(const rm_msgs::DbusData::ConstPtr &dubs_data)
+{
+  joint1_state_ = joint_state_.position[2];
+  joint1_state_ += (dubs_data->ch_l_y) * joint1_speed_scale_;
+}
+
 void Engineer2Manual::dbusDataCallback(const rm_msgs::DbusData::ConstPtr& data)
 {
   ManualBase::dbusDataCallback(data);
   chassis_cmd_sender_->updateRefereeStatus(referee_is_online_);
   if (servo_mode_ == SERVO)
     updateServo(data);
+  if (servo_mode_ == CUSTOM)
+    updateJoint1(data);
 }
 
 void Engineer2Manual::stoneNumCallback(const std_msgs::String::ConstPtr& data)
@@ -230,6 +276,22 @@ void Engineer2Manual::gpioStateCallback(const rm_msgs::GpioData::ConstPtr& data)
 {
   gripper_ui_.state = { data->gpio_state.begin(), data->gpio_state.end() - 2 };
   main_gripper_on_ = data->gpio_state[0];
+}
+
+void Engineer2Manual::customControllerCallback(const std_msgs::Float64MultiArray::ConstPtr& custom_data)
+{
+  for( int i = 0; i < 5; i++ )
+  {
+    double m_data = 0.0;
+    m_data = custom_data->data[i] + custom_data_offset_[i];
+    if( m_data >= 6.28 )
+      m_data -= 6.28;
+    if( m_data < 0)
+      m_data += 6.28;
+    m_data *= custom_joints_orientation[i];
+    m_data += custom_controller_offset_[i];
+    custom_joint_state_[i] = m_data;
+  }
 }
 
 void Engineer2Manual::sendCommand(const ros::Time& time)
@@ -326,6 +388,17 @@ void Engineer2Manual::enterServo()
   engineer_ui_.control_mode = "SERVO";
 }
 
+void Engineer2Manual::enterCustom()
+{
+  servo_mode_ = CUSTOM;
+  gimbal_mode_ = DIRECT;
+  changeSpeedMode(EXCHANGE);
+  chassis_cmd_sender_->setMode(rm_msgs::ChassisCmd::RAW);
+  action_client_.cancelAllGoals();
+  chassis_cmd_sender_->getMsg()->command_source_frame = "yaw";
+//  engineer_ui_.control_mode = "CUSTOM";
+}
+
 void Engineer2Manual::initMode()
 {
   servo_mode_ = JOINT;
@@ -373,11 +446,13 @@ void Engineer2Manual::rightSwitchDownRise()
 {
   ChassisGimbalManual::rightSwitchDownRise();
   chassis_cmd_sender_->setMode(rm_msgs::ChassisCmd::RAW);
-  servo_mode_ = SERVO;
+//  servo_mode_ = SERVO;
+  servo_mode_ = CUSTOM;
   gimbal_mode_ = RATE;
-  servo_reset_caller_->callService();
+//  servo_reset_caller_->callService();
   action_client_.cancelAllGoals();
-  ROS_INFO_STREAM("servo_mode");
+//  ROS_INFO_STREAM("servo_mode");
+  ROS_INFO_STREAM("custom_controller_mode");
 }
 
 void Engineer2Manual::leftSwitchUpRise()

@@ -11,6 +11,9 @@
 #include <actionlib/client/simple_action_client.h>
 #include <rm_common/decision/calibration_queue.h>
 #include <std_msgs/Float64.h>
+#include <std_msgs/Float64MultiArray.h>
+#include <trajectory_msgs/JointTrajectory.h>
+#include <trajectory_msgs/JointTrajectoryPoint.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <rm_msgs/EngineerAction.h>
 #include <rm_msgs/MultiDofCmd.h>
@@ -34,7 +37,8 @@ public:
   enum JointMode
   {
     SERVO,
-    JOINT
+    JOINT,
+    CUSTOM
   };
 
   enum GimbalMode
@@ -61,9 +65,12 @@ private:
   void updateRc(const rm_msgs::DbusData::ConstPtr& dbus_data) override;
   void updatePc(const rm_msgs::DbusData::ConstPtr& dbus_data) override;
   void updateServo(const rm_msgs::DbusData::ConstPtr& dbus_data);
+  void updateCustomController();
+  void updateJoint1(const rm_msgs::DbusData::ConstPtr& dubs_data);
   void dbusDataCallback(const rm_msgs::DbusData::ConstPtr& data) override;
   void gpioStateCallback(const rm_msgs::GpioData::ConstPtr& data);
   void stoneNumCallback(const std_msgs::String ::ConstPtr& data);
+  void customControllerCallback(const std_msgs::Float64MultiArray::ConstPtr& custom_data);
   void sendCommand(const ros::Time& time) override;
   void runStepQueue(const std::string& step_queue_name);
   void actionFeedbackCallback(const rm_msgs::EngineerFeedbackConstPtr& feedback);
@@ -71,6 +78,7 @@ private:
 
   void initMode();
   void enterServo();
+  void enterCustom();
   void actionActiveCallback()
   {
     operating_mode_ = MIDDLEWARE;
@@ -149,17 +157,18 @@ private:
   bool mouse_left_pressed_{}, mouse_right_pressed_{}, had_ground_stone_{ false }, main_gripper_on_{ false },
       had_side_gold_{ false }, stone_state_[4]{};
   double angular_z_scale_{}, gyro_scale_{}, fast_gyro_scale_{}, low_gyro_scale_{}, normal_gyro_scale_{},
-      exchange_gyro_scale_{}, fast_speed_scale_{}, low_speed_scale_{}, normal_speed_scale_{}, exchange_speed_scale_{},
-      big_island_speed_scale_{};
+      exchange_gyro_scale_{}, fast_speed_scale_{}, low_speed_scale_{}, normal_speed_scale_{}, exchange_speed_scale_{},joint1_speed_scale_{0.1},
+      big_island_speed_scale_{}, custom_joint_state_[5]{}, joint1_state_{}, custom_data_offset_[5]{}, custom_controller_offset_[5]{};
 
   std::string prefix_{}, root_{}, exchange_direction_{ "left" }, exchange_arm_position_{ "normal" };
-  int operating_mode_{}, servo_mode_{ 1 }, gimbal_mode_{}, gimbal_direction_{ 0 };
+  int operating_mode_{}, servo_mode_{ 1 }, gimbal_mode_{}, gimbal_direction_{ 0 }, custom_seq_{ 1 },
+      custom_joints_orientation[5]{ 1, 1, 1, -1, -1};
 
   std::stack<std::string> stone_num_{};
 
   ros::Time last_time_;
-  ros::Subscriber stone_num_sub_, gripper_state_sub_;
-  ros::Publisher engineer_ui_pub_, gripper_ui_pub_;
+  ros::Subscriber stone_num_sub_, gripper_state_sub_, custom_controller_sub_;
+  ros::Publisher engineer_ui_pub_, gripper_ui_pub_, trajectory_cmd_pub_;
 
   rm_msgs::GpioData gpio_state_;
   rm_msgs::EngineerUi engineer_ui_, old_ui_;
