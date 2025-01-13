@@ -158,7 +158,7 @@ private:
       had_side_gold_{ false }, stone_state_[4]{};
   double angular_z_scale_{}, gyro_scale_{}, fast_gyro_scale_{}, low_gyro_scale_{}, normal_gyro_scale_{},
       exchange_gyro_scale_{}, fast_speed_scale_{}, low_speed_scale_{}, normal_speed_scale_{}, exchange_speed_scale_{},joint1_speed_scale_{0.1},
-      big_island_speed_scale_{}, custom_joint_state_[5]{}, joint1_state_{}, custom_data_offset_[5]{}, custom_controller_offset_[5]{};
+      big_island_speed_scale_{}, custom_joint_state_[5]{}, joint1_state_{0.0}, custom_data_offset_[5]{}, custom_controller_offset_[5]{};
 
   std::string prefix_{}, root_{}, exchange_direction_{ "left" }, exchange_arm_position_{ "normal" };
   int operating_mode_{}, servo_mode_{ 1 }, gimbal_mode_{}, gimbal_direction_{ 0 }, custom_seq_{ 1 },
