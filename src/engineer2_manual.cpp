@@ -251,7 +251,7 @@ void Engineer2Manual::updateCustomController()
 
 void Engineer2Manual::updateJoint1(const rm_msgs::DbusData::ConstPtr &dubs_data)
 {
-  joint1_state_ = joint_state_.position[2];
+  joint1_state_ = joint_state_.position[0];
   joint1_state_ += (dubs_data->ch_l_y) * joint1_speed_scale_;
 }
 
