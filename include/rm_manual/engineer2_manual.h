@@ -166,7 +166,6 @@ private:
 
   std::stack<std::string> stone_num_{};
 
-  ros::Time last_time_;
   ros::Subscriber stone_num_sub_, gripper_state_sub_, custom_controller_sub_;
   ros::Publisher engineer_ui_pub_, gripper_ui_pub_, trajectory_cmd_pub_;
 

@@ -237,7 +237,7 @@ void Engineer2Manual::updateCustomController()
   joint_trajectory.header.stamp = ros::Time::now();
   joint_trajectory.joint_names = { "joint1", "joint2", "joint3", "joint4", "joint5", "joint6" };
   joint_trajectory_point.positions.push_back( joint1_state_ ) ;
-  joint_trajectory_point.time_from_start.sec = 1;
+  joint_trajectory_point.time_from_start = ros::Duration(0.25);
   for( double i : custom_joint_state_ )
   {
     joint_trajectory_point.positions.push_back( i );
