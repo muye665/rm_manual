@@ -308,6 +308,12 @@ void Engineer2Manual::sendCommand(const ros::Time& time)
     if (gimbal_mode_ == RATE)
       gimbal_cmd_sender_->sendCommand(time);
   }
+  if (servo_mode_ == CUSTOM)
+  {
+    changeSpeedMode(EXCHANGE);
+    if (gimbal_mode_ == RATE)
+      gimbal_cmd_sender_->sendCommand(time);
+  }
 }
 
 void Engineer2Manual::runStepQueue(const std::string& step_queue_name)
@@ -527,12 +533,12 @@ void Engineer2Manual::cRelease()
 }
 void Engineer2Manual::ePressing()
 {
-  if (servo_mode_ == SERVO)
+  if (servo_mode_ == SERVO || servo_mode_ == CUSTOM)
     vel_cmd_sender_->setAngularZVel(-gyro_scale_);
 }
 void Engineer2Manual::eRelease()
 {
-  if (servo_mode_ == SERVO)
+  if (servo_mode_ == SERVO || servo_mode_ == CUSTOM)
     vel_cmd_sender_->setAngularZVel(0.);
 }
 void Engineer2Manual::fPress()
@@ -549,12 +555,12 @@ void Engineer2Manual::gRelease()
 }
 void Engineer2Manual::qPressing()
 {
-  if (servo_mode_ == SERVO)
+  if (servo_mode_ == SERVO || servo_mode_ == CUSTOM)
     vel_cmd_sender_->setAngularZVel(gyro_scale_);
 }
 void Engineer2Manual::qRelease()
 {
-  if (servo_mode_ == SERVO)
+  if (servo_mode_ == SERVO || servo_mode_ == CUSTOM)
     vel_cmd_sender_->setAngularZVel(0.);
 }
 void Engineer2Manual::rPress()
@@ -585,7 +591,7 @@ void Engineer2Manual::vRelease()
 }
 void Engineer2Manual::xPress()
 {
-  if (servo_mode_ == SERVO)
+  if (servo_mode_ == SERVO || servo_mode_ == CUSTOM)
   {
     switch (gimbal_direction_)
     {
@@ -668,14 +674,16 @@ void Engineer2Manual::ctrlEPress()
 }
 void Engineer2Manual::ctrlFPress()
 {
-  if (exchange_direction_ == "left")
-    prefix_ = "LV5_L_";
-  else
-    prefix_ = "LV5_R_";
-  if (exchange_arm_position_ == "normal")
-    root_ = "EXCHANGE";
-  else
-    root_ = "DROP_GOLD_EXCHANGE";
+  // if (exchange_direction_ == "left")
+  //   prefix_ = "LV5_L_";
+  // else
+  //   prefix_ = "LV5_R_";
+  // if (exchange_arm_position_ == "normal")
+  //   root_ = "EXCHANGE";
+  // else
+  //   root_ = "DROP_GOLD_EXCHANGE";
+  prefix_ = "25READY_CUSTOM_";
+  root_ = "EXCHANGE";
   runStepQueue(prefix_ + root_);
 }
 void Engineer2Manual::ctrlGPress()
@@ -764,15 +772,25 @@ void Engineer2Manual::shiftBRelease()
 void Engineer2Manual::shiftCPress()
 {
   action_client_.cancelAllGoals();
-  if (servo_mode_ == SERVO)
+  // if (servo_mode_ == SERVO)
+  // {
+  //   initMode();
+  //   ROS_INFO("EXIT SERVO");
+  // }
+  // else
+  // {
+  //   enterServo();
+  //   ROS_INFO("ENTER SERVO");
+  // }
+  if (servo_mode_ == CUSTOM)
   {
     initMode();
-    ROS_INFO("EXIT SERVO");
+    ROS_INFO("EXIT CUSTOM CONTROLLER");
   }
   else
   {
-    enterServo();
-    ROS_INFO("ENTER SERVO");
+    enterCustom();
+    ROS_INFO("ENTER CUSTOM CONTROLLER");
   }
   ROS_INFO("cancel all goal");
 }
