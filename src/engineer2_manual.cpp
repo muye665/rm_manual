@@ -218,7 +218,10 @@ void Engineer2Manual::updatePc(const rm_msgs::DbusData::ConstPtr& dbus_data)
   checkKeyboard(dbus_data);
   left_switch_up_event_.update(dbus_data->s_l == rm_msgs::DbusData::UP);
   chassis_cmd_sender_->setMode(rm_msgs::ChassisCmd::RAW);
-  chassis_cmd_sender_->getMsg()->command_source_frame = "yaw";
+  if (servo_mode_ == CUSTOM)
+    chassis_cmd_sender_->getMsg()->command_source_frame = "exchange_orientation";
+  else
+    chassis_cmd_sender_->getMsg()->command_source_frame = "yaw";
   if (servo_mode_ == JOINT)
     vel_cmd_sender_->setAngularZVel(-dbus_data->m_x * gimbal_scale_);
 }
@@ -236,11 +239,13 @@ void Engineer2Manual::updateCustomController()
   joint_trajectory.header.seq = custom_seq_;
   joint_trajectory.header.stamp = ros::Time::now();
   joint_trajectory.joint_names = { "joint1", "joint2", "joint3", "joint4", "joint5", "joint6" };
+  joint1_state_ = joint_state_.position[0];
+  joint1_state_ +=  custom_joint_state_[5] * joint1_speed_scale_;
   joint_trajectory_point.positions.push_back( joint1_state_ ) ;
   joint_trajectory_point.time_from_start = ros::Duration(0.25);
-  for( double i : custom_joint_state_ )
+  for( int i = 0; i < 5; i++ )
   {
-    joint_trajectory_point.positions.push_back( i );
+    joint_trajectory_point.positions.push_back( custom_joint_state_[i] );
   }
   joint_trajectory.points.push_back( joint_trajectory_point );
   trajectory_cmd_pub_.publish( joint_trajectory );
@@ -249,20 +254,12 @@ void Engineer2Manual::updateCustomController()
     custom_seq_ = 1;
 }
 
-void Engineer2Manual::updateJoint1(const rm_msgs::DbusData::ConstPtr &dubs_data)
-{
-  joint1_state_ = joint_state_.position[0];
-  joint1_state_ += (dubs_data->ch_l_y) * joint1_speed_scale_;
-}
-
 void Engineer2Manual::dbusDataCallback(const rm_msgs::DbusData::ConstPtr& data)
 {
   ManualBase::dbusDataCallback(data);
   chassis_cmd_sender_->updateRefereeStatus(referee_is_online_);
   if (servo_mode_ == SERVO)
     updateServo(data);
-  if (servo_mode_ == CUSTOM)
-    updateJoint1(data);
 }
 
 void Engineer2Manual::stoneNumCallback(const std_msgs::String::ConstPtr& data)
@@ -288,10 +285,11 @@ void Engineer2Manual::customControllerCallback(const std_msgs::Float64MultiArray
       m_data -= 6.28;
     if( m_data < 0)
       m_data += 6.28;
-    m_data *= custom_joints_orientation[i];
+    m_data *= custom_joints_orientation_[i];
     m_data += custom_controller_offset_[i];
     custom_joint_state_[i] = m_data;
   }
+  custom_joint_state_[5] = custom_data->data[5];
 }
 
 void Engineer2Manual::sendCommand(const ros::Time& time)
@@ -351,35 +349,35 @@ void Engineer2Manual::actionDoneCallback(const actionlib::SimpleClientGoalState&
     initMode();
     changeSpeedMode(NORMAL);
   }
-  if (root_ == "BIG_ISLAND0" || root_ == "THREE_SILVER0")
-    engineer_ui_.symbol = UiState::NONE;
-  if (prefix_ == "LV4_" || prefix_ == "LV5_L_" || prefix_ == "LV5_R_")
-  {
-    had_ground_stone_ = false;
-    had_side_gold_ = false;
-    changeSpeedMode(EXCHANGE);
-    enterServo();
-  }
-  if (root_ == "GROUND_STONE0")
-  {
-    changeSpeedMode(NORMAL);
-  }
-  if (prefix_ + root_ == "SIDE_BIG_ISLAND1")
-  {
-    enterServo();
-    changeSpeedMode(BIG_ISLAND_SPEED);
-  }
-  if (prefix_ + root_ == "MID_BIG_ISLAND11" || prefix_ + root_ == "BOTH_BIG_ISLAND1")
-  {
-    enterServo();
-    changeSpeedMode(BIG_ISLAND_SPEED);
-  }
-  if (prefix_ + root_ == "MID_BIG_ISLAND111" || prefix_ + root_ == "SIDE_BIG_ISLAND111" ||
-      prefix_ + root_ == "BOTH_BIG_ISLAND111")
-  {
-    initMode();
-    changeSpeedMode(NORMAL);
-  }
+  // if (root_ == "BIG_ISLAND0" || root_ == "THREE_SILVER0")
+  //   engineer_ui_.symbol = UiState::NONE;
+  // if (prefix_ == "LV4_" || prefix_ == "LV5_L_" || prefix_ == "LV5_R_")
+  // {
+  //   had_ground_stone_ = false;
+  //   had_side_gold_ = false;
+  //   changeSpeedMode(EXCHANGE);
+  //   enterServo();
+  // }
+  // if (root_ == "GROUND_STONE0")
+  // {
+  //   changeSpeedMode(NORMAL);
+  // }
+  // if (prefix_ + root_ == "SIDE_BIG_ISLAND1")
+  // {
+  //   enterServo();
+  //   changeSpeedMode(BIG_ISLAND_SPEED);
+  // }
+  // if (prefix_ + root_ == "MID_BIG_ISLAND11" || prefix_ + root_ == "BOTH_BIG_ISLAND1")
+  // {
+  //   enterServo();
+  //   changeSpeedMode(BIG_ISLAND_SPEED);
+  // }
+  // if (prefix_ + root_ == "MID_BIG_ISLAND111" || prefix_ + root_ == "SIDE_BIG_ISLAND111" ||
+  //     prefix_ + root_ == "BOTH_BIG_ISLAND111")
+  // {
+  //   initMode();
+  //   changeSpeedMode(NORMAL);
+  // }
 }
 
 void Engineer2Manual::enterServo()
@@ -401,7 +399,7 @@ void Engineer2Manual::enterCustom()
   changeSpeedMode(EXCHANGE);
   chassis_cmd_sender_->setMode(rm_msgs::ChassisCmd::RAW);
   action_client_.cancelAllGoals();
-  chassis_cmd_sender_->getMsg()->command_source_frame = "yaw";
+  chassis_cmd_sender_->getMsg()->command_source_frame = "exchange_orientation";
 //  engineer_ui_.control_mode = "CUSTOM";
 }
 
@@ -466,8 +464,8 @@ void Engineer2Manual::leftSwitchUpRise()
   prefix_ = "";
   root_ = "CALIBRATION";
   runStepQueue("CALIBRATION");
-  had_side_gold_ = false;
-  had_ground_stone_ = false;
+  // had_side_gold_ = false;
+  // had_ground_stone_ = false;
   calibration_gather_->reset();
   for (auto& stone : stone_state_)
   {
@@ -525,11 +523,11 @@ void Engineer2Manual::bRelease()
 }
 void Engineer2Manual::cPressing()
 {
-  angular_z_scale_ = -0.8;
+  // angular_z_scale_ = -0.8;
 }
 void Engineer2Manual::cRelease()
 {
-  angular_z_scale_ = 0.;
+  // angular_z_scale_ = 0.;
 }
 void Engineer2Manual::ePressing()
 {
@@ -565,18 +563,18 @@ void Engineer2Manual::qRelease()
 }
 void Engineer2Manual::rPress()
 {
-  if (had_side_gold_)
-    had_side_gold_ = false;
-  if (had_ground_stone_)
-    had_ground_stone_ = false;
-  else if (stone_state_[0])
-    stone_state_[0] = false;
-  else if (stone_state_[3])
-    stone_state_[3] = false;
-  else if (stone_state_[2])
-    stone_state_[2] = false;
-  else if (stone_state_[1])
-    stone_state_[1] = false;
+  // if (had_side_gold_)
+  //   had_side_gold_ = false;
+  // if (had_ground_stone_)
+  //   had_ground_stone_ = false;
+  // else if (stone_state_[0])
+  //   stone_state_[0] = false;
+  // else if (stone_state_[3])
+  //   stone_state_[3] = false;
+  // else if (stone_state_[2])
+  //   stone_state_[2] = false;
+  // else if (stone_state_[1])
+  //   stone_state_[1] = false;
 }
 
 void Engineer2Manual::rRelease()
@@ -603,6 +601,9 @@ void Engineer2Manual::xPress()
         runStepQueue("GIMBAL_R");
         gimbal_direction_ = 0;
         break;
+      default:
+        gimbal_direction_ = 0;
+        break;
     }
   }
   else
@@ -621,16 +622,19 @@ void Engineer2Manual::xPress()
         runStepQueue("GIMBAL_F");
         gimbal_direction_ = 0;
         break;
+      default:
+        gimbal_direction_ = 0;
+        break;
     }
   }
 }
 void Engineer2Manual::zPressing()
 {
-  angular_z_scale_ = 0.8;
+  // angular_z_scale_ = 0.8;
 }
 void Engineer2Manual::zRelease()
 {
-  angular_z_scale_ = 0.;
+  // angular_z_scale_ = 0.;
 }
 
 //---------------------  CTRL  ---------------------
@@ -640,11 +644,14 @@ void Engineer2Manual::ctrlAPress()
   root_ = "GET_SMALL_ISLAND";
   runStepQueue(prefix_ + root_);
   changeSpeedMode(LOW);
+  ROS_INFO("%s", (prefix_ + root_).c_str());
+  small_arm_stone_ = SILVER;
 }
 void Engineer2Manual::ctrlBPress()
 {
   prefix_ = "";
   root_ = "HOME";
+  gimbal_direction_ = 0;
   runStepQueue(prefix_ + root_);
   changeSpeedMode(NORMAL);
 }
@@ -663,14 +670,30 @@ void Engineer2Manual::ctrlCPress()
 }
 void Engineer2Manual::ctrlDPress()
 {
-  engineer_ui_.symbol = UiState::SMALL_ISLAND;
-  prefix_ = "GRIPPER_";
-  root_ = "THREE_SILVER";
-  changeSpeedMode(EXCHANGE);
+  // engineer_ui_.symbol = UiState::SMALL_ISLAND;
+  // prefix_ = "GRIPPER_";
+  // root_ = "THREE_SILVER";
+  // changeSpeedMode(EXCHANGE);
+  // runStepQueue(prefix_ + root_);
+  // engineer_ui_.symbol = UiState::BIG_ISLAND;
+  prefix_ = "";
+  root_ = "GET_BIG_ISLAND";
+  // had_side_gold_ = true;
+  // had_ground_stone_ = false;
+  changeSpeedMode(LOW);
   runStepQueue(prefix_ + root_);
+  ROS_INFO("%s", (prefix_ + root_).c_str());
+  small_arm_stone_ = GOLD;
 }
 void Engineer2Manual::ctrlEPress()
 {
+  prefix_ = "";
+  root_ = "GET_BIG_ISLAND_RIGHT";
+  // had_side_gold_ = true;
+  // had_ground_stone_ = false;
+  changeSpeedMode(LOW);
+  runStepQueue(prefix_ + root_);
+  ROS_INFO("%s", (prefix_ + root_).c_str());
 }
 void Engineer2Manual::ctrlFPress()
 {
@@ -682,20 +705,43 @@ void Engineer2Manual::ctrlFPress()
   //   root_ = "EXCHANGE";
   // else
   //   root_ = "DROP_GOLD_EXCHANGE";
-  prefix_ = "25READY_CUSTOM_";
+  prefix_ = "READY_CUSTOM_";
   root_ = "EXCHANGE";
   runStepQueue(prefix_ + root_);
 }
 void Engineer2Manual::ctrlGPress()
 {
-  engineer_ui_.symbol = UiState::BIG_ISLAND;
-  prefix_ = "MID_";
-  root_ = "BIG_ISLAND";
-  changeSpeedMode(LOW);
-  runStepQueue(prefix_ + root_);
+  // engineer_ui_.symbol = UiState::BIG_ISLAND;
+  // prefix_ = "MID_";
+  // root_ = "BIG_ISLAND";
+  // changeSpeedMode(LOW);
+  // runStepQueue(prefix_ + root_);
+  prefix_ = "";
+  if (main_gripper_on_)
+  {
+    if (servo_mode_ == CUSTOM)
+    {
+      root_ = "CM_GIMBAL_R";
+      gimbal_direction_ = 0;
+    }
+    else
+      root_ = "CM";
+  }
+  else
+  {
+    root_ = "OM";
+  }
+  runStepQueue(root_);
 }
 void Engineer2Manual::ctrlQPress()
 {
+  prefix_ = "";
+  root_ = "GET_BIG_ISLAND_LEFT";
+  // had_side_gold_ = true;
+  // had_ground_stone_ = false;
+  changeSpeedMode(LOW);
+  runStepQueue(prefix_ + root_);
+  ROS_INFO("%s", (prefix_ + root_).c_str());
 }
 void Engineer2Manual::ctrlRPress()
 {
@@ -703,51 +749,77 @@ void Engineer2Manual::ctrlRPress()
   prefix_ = "";
   root_ = "CALIBRATION";
   servo_mode_ = JOINT;
-  had_ground_stone_ = false;
-  had_side_gold_ = false;
+  // had_ground_stone_ = false;
+  // had_side_gold_ = false;
   calibration_gather_->reset();
   ROS_INFO_STREAM("START CALIBRATE");
   changeSpeedMode(NORMAL);
-  for (auto& stone : stone_state_)
-    stone = false;
+  // for (auto& stone : stone_state_)
+  //   stone = false;
+  small_arm_stone_ = EMPTY;
   runStepQueue("CA");
 }
 void Engineer2Manual::ctrlSPress()
 {
-  engineer_ui_.symbol = UiState::BIG_ISLAND;
-  prefix_ = "BOTH_";
-  root_ = "BIG_ISLAND";
-  had_side_gold_ = true;
-  had_ground_stone_ = false;
-  changeSpeedMode(LOW);
-  runStepQueue(prefix_ + root_);
-  ROS_INFO("%s", (prefix_ + root_).c_str());
+  // engineer_ui_.symbol = UiState::BIG_ISLAND;
+  // prefix_ = "";
+  // root_ = "GET_BIG_ISLAND";
+  // // had_side_gold_ = true;
+  // // had_ground_stone_ = false;
+  // changeSpeedMode(LOW);
+  // runStepQueue(prefix_ + root_);
+  // ROS_INFO("%s", (prefix_ + root_).c_str());
 }
 void Engineer2Manual::ctrlVPress()
 {
+  prefix_ = "GET_SMALL_ARM_STONE_FROM_";
+  switch (small_arm_stone_)
+  {
+    case EMPTY:
+      ROS_INFO_STREAM("SMALL_ARM_HAS_NO_STONE");
+      prefix_ = "";
+      root_ = "";
+      break;
+    case GOLD:
+      root_ = "UP";
+      break;
+    case SILVER:
+      root_ = "SIDE";
+      break;
+  }
+  runStepQueue(prefix_ + root_);
+  small_arm_stone_ = EMPTY;
 }
 void Engineer2Manual::ctrlVRelease()
 {
 }
 void Engineer2Manual::ctrlWPress()
 {
-  engineer_ui_.symbol = UiState::BIG_ISLAND;
-  prefix_ = "SIDE_";
-  root_ = "BIG_ISLAND";
-  had_side_gold_ = true;
-  had_ground_stone_ = false;
+  // // engineer_ui_.symbol = UiState::BIG_ISLAND;
+  // prefix_ = "";
+  // root_ = "GET_BIG_ISLAND_RIGHT";
+  // // had_side_gold_ = true;
+  // // had_ground_stone_ = false;
+  // changeSpeedMode(LOW);
+  // runStepQueue(prefix_ + root_);
+  // ROS_INFO("%s", (prefix_ + root_).c_str());
+  // engineer_ui_.symbol = UiState::BIG_ISLAND;
+  prefix_ = "";
+  root_ = "GET_BIG_ISLAND_MID";
+  // had_side_gold_ = true;
+  // had_ground_stone_ = false;
   changeSpeedMode(LOW);
   runStepQueue(prefix_ + root_);
   ROS_INFO("%s", (prefix_ + root_).c_str());
 }
 void Engineer2Manual::ctrlXPress()
 {
-  had_ground_stone_ = true;
-  prefix_ = "";
-  root_ = "GROUND_STONE";
-  changeSpeedMode(LOW);
-  ROS_INFO_STREAM(prefix_ + root_);
-  runStepQueue(prefix_ + root_);
+  // had_ground_stone_ = true;
+  // prefix_ = "";
+  // root_ = "GROUND_STONE";
+  // changeSpeedMode(LOW);
+  // ROS_INFO_STREAM(prefix_ + root_);
+  // runStepQueue(prefix_ + root_);
 }
 void Engineer2Manual::ctrlZPress()
 {
@@ -796,107 +868,109 @@ void Engineer2Manual::shiftCPress()
 }
 void Engineer2Manual::shiftEPress()
 {
-  exchange_direction_ = "right";
-  prefix_ = "LV5_R_";
-  if (had_ground_stone_)
-  {
-    exchange_arm_position_ = "normal";
-    root_ = "EXCHANGE";
-  }
-  else if (had_side_gold_)
-  {
-    exchange_arm_position_ = "front";
-    root_ = "DROP_GOLD_EXCHANGE";
-  }
-  else
-  {
-    exchange_arm_position_ = "normal";
-    if (stone_state_[0])
-      root_ = "G";
-    else if (stone_state_[3])
-      root_ = "S3";
-    else if (stone_state_[2])
-      root_ = "S2";
-    else if (stone_state_[1])
-      root_ = "S1";
-  }
-  runStepQueue(prefix_ + root_);
+  // exchange_direction_ = "right";
+  // prefix_ = "LV5_R_";
+  // if (had_ground_stone_)
+  // {
+  //   exchange_arm_position_ = "normal";
+  //   root_ = "EXCHANGE";
+  // }
+  // else if (had_side_gold_)
+  // {
+  //   exchange_arm_position_ = "front";
+  //   root_ = "DROP_GOLD_EXCHANGE";
+  // }
+  // else
+  // {
+  //   exchange_arm_position_ = "normal";
+  //   if (stone_state_[0])
+  //     root_ = "G";
+  //   else if (stone_state_[3])
+  //     root_ = "S3";
+  //   else if (stone_state_[2])
+  //     root_ = "S2";
+  //   else if (stone_state_[1])
+  //     root_ = "S1";
+  // }
+  // runStepQueue(prefix_ + root_);
+  // engineer_ui_.symbol = UiState::BIG_ISLAND;
 }
 void Engineer2Manual::shiftFPress()
 {
-  if (exchange_direction_ == "left")
-  {
-    prefix_ = "L2R_";
-    exchange_direction_ = "right";
-  }
-  else if (exchange_direction_ == "right")
-  {
-    prefix_ = "R2L_";
-    exchange_direction_ = "left";
-  }
-  if (exchange_arm_position_ == "normal")
-    root_ = "EXCHANGE";
-  else
-    root_ = "EXCHANGE";
-  ROS_INFO_STREAM(prefix_ + root_);
-  runStepQueue(prefix_ + root_);
+  // if (exchange_direction_ == "left")
+  // {
+  //   prefix_ = "L2R_";
+  //   exchange_direction_ = "right";
+  // }
+  // else if (exchange_direction_ == "right")
+  // {
+  //   prefix_ = "R2L_";
+  //   exchange_direction_ = "left";
+  // }
+  // if (exchange_arm_position_ == "normal")
+  //   root_ = "EXCHANGE";
+  // else
+  //   root_ = "EXCHANGE";
+  // ROS_INFO_STREAM(prefix_ + root_);
+  // runStepQueue(prefix_ + root_);
 }
 void Engineer2Manual::shiftGPress()
 {
-  prefix_ = "LV4_";
-  if (had_ground_stone_)
-  {
-    exchange_arm_position_ = "normal";
-    root_ = "EXCHANGE";
-  }
-  else if (had_side_gold_)
-  {
-    exchange_arm_position_ = "front";
-    root_ = "EXCHANGE";
-  }
-  else
-  {
-    exchange_arm_position_ = "normal";
-    if (stone_state_[0])
-      root_ = "G";
-    else if (stone_state_[3])
-      root_ = "S3";
-    else if (stone_state_[2])
-      root_ = "S2";
-    else if (stone_state_[1])
-      root_ = "S1";
-  }
-  runStepQueue(prefix_ + root_);
-  ROS_INFO_STREAM(prefix_ + root_);
+  // prefix_ = "LV4_";
+  // if (had_ground_stone_)
+  // {
+  //   exchange_arm_position_ = "normal";
+  //   root_ = "EXCHANGE";
+  // }
+  // else if (had_side_gold_)
+  // {
+  //   exchange_arm_position_ = "front";
+  //   root_ = "EXCHANGE";
+  // }
+  // else
+  // {
+  //   exchange_arm_position_ = "normal";
+  //   if (stone_state_[0])
+  //     root_ = "G";
+  //   else if (stone_state_[3])
+  //     root_ = "S3";
+  //   else if (stone_state_[2])
+  //     root_ = "S2";
+  //   else if (stone_state_[1])
+  //     root_ = "S1";
+  // }
+  // runStepQueue(prefix_ + root_);
+  // ROS_INFO_STREAM(prefix_ + root_);
 }
 void Engineer2Manual::shiftQPress()
 {
-  exchange_direction_ = "left";
-  prefix_ = "LV5_L_";
-  if (had_ground_stone_)
-  {
-    exchange_arm_position_ = "normal";
-    root_ = "EXCHANGE";
-  }
-  else if (had_side_gold_)
-  {
-    exchange_arm_position_ = "front";
-    root_ = "DROP_GOLD_EXCHANGE";
-  }
-  else
-  {
-    exchange_arm_position_ = "normal";
-    if (stone_state_[0])
-      root_ = "G";
-    else if (stone_state_[3])
-      root_ = "S3";
-    else if (stone_state_[2])
-      root_ = "S2";
-    else if (stone_state_[1])
-      root_ = "S1";
-  }
-  runStepQueue(prefix_ + root_);
-  ROS_INFO_STREAM(prefix_ + root_);
+  // exchange_direction_ = "left";
+  // prefix_ = "LV5_L_";
+  // if (had_ground_stone_)
+  // {
+  //   exchange_arm_position_ = "normal";
+  //   root_ = "EXCHANGE";
+  // }
+  // else if (had_side_gold_)
+  // {
+  //   exchange_arm_position_ = "front";
+  //   root_ = "DROP_GOLD_EXCHANGE";
+  // }
+  // else
+  // {
+  //   exchange_arm_position_ = "normal";
+  //   if (stone_state_[0])
+  //     root_ = "G";
+  //   else if (stone_state_[3])
+  //     root_ = "S3";
+  //   else if (stone_state_[2])
+  //     root_ = "S2";
+  //   else if (stone_state_[1])
+  //     root_ = "S1";
+  // }
+  // runStepQueue(prefix_ + root_);
+  // ROS_INFO_STREAM(prefix_ + root_);
+  // engineer_ui_.symbol = UiState::BIG_ISLAND;
 }
 void Engineer2Manual::shiftRPress()
 {
@@ -906,16 +980,16 @@ void Engineer2Manual::shiftRRelease()
 }
 void Engineer2Manual::shiftVPress()
 {
-  prefix_ = "";
-  if (main_gripper_on_)
-  {
-    root_ = "CM";
-  }
-  else
-  {
-    root_ = "OM";
-  }
-  runStepQueue(root_);
+  // prefix_ = "";
+  // if (main_gripper_on_)
+  // {
+  //   root_ = "CM";
+  // }
+  // else
+  // {
+  //   root_ = "OM";
+  // }
+  // runStepQueue(root_);
 }
 void Engineer2Manual::shiftVRelease()
 {
@@ -925,10 +999,10 @@ void Engineer2Manual::shiftXPress()
 }
 void Engineer2Manual::shiftZPress()
 {
-  prefix_ = "";
-  root_ = "CG";
-  runStepQueue(prefix_ + root_);
-  ROS_INFO("%s", (prefix_ + root_).c_str());
+  // prefix_ = "";
+  // root_ = "CG";
+  // runStepQueue(prefix_ + root_);
+  // ROS_INFO("%s", (prefix_ + root_).c_str());
 }
 void Engineer2Manual::shiftZRelease()
 {
