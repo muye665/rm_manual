@@ -239,13 +239,11 @@ void Engineer2Manual::updateCustomController()
   joint_trajectory.header.seq = custom_seq_;
   joint_trajectory.header.stamp = ros::Time::now();
   joint_trajectory.joint_names = { "joint1", "joint2", "joint3", "joint4", "joint5", "joint6" };
-  joint1_state_ = joint_state_.position[0];
-  joint1_state_ +=  custom_joint_state_[5] * joint1_speed_scale_;
   joint_trajectory_point.positions.push_back( joint1_state_ ) ;
   joint_trajectory_point.time_from_start = ros::Duration(0.25);
-  for( int i = 0; i < 5; i++ )
+  for( double i : custom_joint_state_ )
   {
-    joint_trajectory_point.positions.push_back( custom_joint_state_[i] );
+    joint_trajectory_point.positions.push_back( i );
   }
   joint_trajectory.points.push_back( joint_trajectory_point );
   trajectory_cmd_pub_.publish( joint_trajectory );
@@ -254,12 +252,20 @@ void Engineer2Manual::updateCustomController()
     custom_seq_ = 1;
 }
 
+void Engineer2Manual::updateJoint1(const rm_msgs::DbusData::ConstPtr &dubs_data)
+{
+  joint1_state_ = joint_state_.position[0];
+  joint1_state_ += (dubs_data->ch_l_y) * joint1_speed_scale_;
+}
+
 void Engineer2Manual::dbusDataCallback(const rm_msgs::DbusData::ConstPtr& data)
 {
   ManualBase::dbusDataCallback(data);
   chassis_cmd_sender_->updateRefereeStatus(referee_is_online_);
   if (servo_mode_ == SERVO)
     updateServo(data);
+  if (servo_mode_ == CUSTOM)
+    updateJoint1(data);
 }
 
 void Engineer2Manual::stoneNumCallback(const std_msgs::String::ConstPtr& data)
@@ -289,7 +295,6 @@ void Engineer2Manual::customControllerCallback(const std_msgs::Float64MultiArray
     m_data += custom_controller_offset_[i];
     custom_joint_state_[i] = m_data;
   }
-  custom_joint_state_[5] = custom_data->data[5];
 }
 
 void Engineer2Manual::sendCommand(const ros::Time& time)
