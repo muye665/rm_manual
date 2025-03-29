@@ -26,18 +26,24 @@ Engineer2Manual::Engineer2Manual(ros::NodeHandle& nh, ros::NodeHandle& nh_refere
   servo_command_sender_ = new rm_common::Vel3DCommandSender(nh_servo);
   servo_reset_caller_ = new rm_common::ServiceCallerBase<std_srvs::Empty>(nh_servo, "/servo_server/reset_servo_status");
   // Custom Controller
+  //  data 1-5 correspond to joint 2-6
+  //  data 6 corresponds to joint 1
   ros::NodeHandle nh_custom_data_offset(nh, "custom_data_offset");
   nh_custom_data_offset.param("data1_offset", custom_data_offset_[0], 0.0);
   nh_custom_data_offset.param("data2_offset", custom_data_offset_[1], 0.0);
   nh_custom_data_offset.param("data3_offset", custom_data_offset_[2], 0.0);
   nh_custom_data_offset.param("data4_offset", custom_data_offset_[3], 0.0);
   nh_custom_data_offset.param("data5_offset", custom_data_offset_[4], 0.0);
+  nh_custom_data_offset.param("data6_offset", custom_data_offset_[5], 0.0);
   ros::NodeHandle nh_custom_controller_offset(nh, "custom_controller_offset");
   nh_custom_controller_offset.param("joint2", custom_controller_offset_[0], 0.0);
   nh_custom_controller_offset.param("joint3", custom_controller_offset_[1], 0.0);
   nh_custom_controller_offset.param("joint4", custom_controller_offset_[2], 0.0);
   nh_custom_controller_offset.param("joint5", custom_controller_offset_[3], 0.0);
   nh_custom_controller_offset.param("joint6", custom_controller_offset_[4], 0.0);
+  ros::NodeHandle nh_custom_controller_joint1(nh, "custom_controller_joint1");
+  nh_custom_controller_joint1.param("custom_dead_zone", custom_dead_zone_, 0.08);
+  nh_custom_controller_joint1.param("custom_speed_scale", custom_speed_scale_, 0.1);
   // Vel
   ros::NodeHandle chassis_nh(nh, "chassis");
   chassis_nh.param("fast_speed_scale", fast_speed_scale_, 1.0);
@@ -255,7 +261,7 @@ void Engineer2Manual::updateCustomController()
 void Engineer2Manual::updateJoint1(const rm_msgs::DbusData::ConstPtr &dubs_data)
 {
   joint1_state_ = joint_state_.position[0];
-  joint1_state_ += (dubs_data->ch_l_y) * joint1_speed_scale_;
+  joint1_state_ += (dubs_data->ch_l_y) * rc_speed_scale_;
 }
 
 void Engineer2Manual::dbusDataCallback(const rm_msgs::DbusData::ConstPtr& data)
@@ -283,9 +289,9 @@ void Engineer2Manual::gpioStateCallback(const rm_msgs::GpioData::ConstPtr& data)
 
 void Engineer2Manual::customControllerCallback(const std_msgs::Float64MultiArray::ConstPtr& custom_data)
 {
+  double m_data = 0.0;
   for( int i = 0; i < 5; i++ )
   {
-    double m_data = 0.0;
     m_data = custom_data->data[i] + custom_data_offset_[i];
     if( m_data >= 6.28 )
       m_data -= 6.28;
@@ -294,6 +300,11 @@ void Engineer2Manual::customControllerCallback(const std_msgs::Float64MultiArray
     m_data *= custom_joints_orientation_[i];
     m_data += custom_controller_offset_[i];
     custom_joint_state_[i] = m_data;
+  }
+  m_data = custom_data->data[5] + custom_data_offset_[5];
+  if( m_data > custom_dead_zone_ && m_data < -custom_dead_zone_ ){
+    joint1_state_ = joint_state_.position[0];
+    joint1_state_ += m_data * custom_speed_scale_;
   }
 }
 

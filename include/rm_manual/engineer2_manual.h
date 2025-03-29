@@ -157,12 +157,12 @@ private:
   bool mouse_left_pressed_{}, mouse_right_pressed_{}, had_ground_stone_{ false }, main_gripper_on_{ false },
       had_side_gold_{ false }, stone_state_[4]{};
   double angular_z_scale_{}, gyro_scale_{}, fast_gyro_scale_{}, low_gyro_scale_{}, normal_gyro_scale_{},
-      exchange_gyro_scale_{}, fast_speed_scale_{}, low_speed_scale_{}, normal_speed_scale_{}, exchange_speed_scale_{},joint1_speed_scale_{0.1},
-      big_island_speed_scale_{}, custom_joint_state_[5]{}, joint1_state_{0.0}, custom_data_offset_[5]{}, custom_controller_offset_[5]{};
+      exchange_gyro_scale_{}, fast_speed_scale_{}, low_speed_scale_{}, normal_speed_scale_{}, exchange_speed_scale_{}, rc_speed_scale_{0.1}, custom_speed_scale_{0.1},
+      big_island_speed_scale_{}, custom_joint_state_[5]{}, joint1_state_{0.0}, custom_dead_zone_{0.08}, custom_data_offset_[6]{}, custom_controller_offset_[5]{};
 
   std::string prefix_{}, root_{}, exchange_direction_{ "left" }, exchange_arm_position_{ "normal" };
   int operating_mode_{}, servo_mode_{ 1 }, gimbal_mode_{}, gimbal_direction_{ 0 }, custom_seq_{ 1 }, small_arm_stone_{ 0 },
-      custom_joints_orientation_[5]{ 1, 1, 1, -1, -1};
+      custom_joints_orientation_[6]{ 1, 1, 1, -1, -1};
 
   std::stack<std::string> stone_num_{};
 
