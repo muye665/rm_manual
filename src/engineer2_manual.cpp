@@ -41,7 +41,7 @@ Engineer2Manual::Engineer2Manual(ros::NodeHandle& nh, ros::NodeHandle& nh_refere
   nh_custom_controller_offset.param("joint4", custom_controller_offset_[2], 0.0);
   nh_custom_controller_offset.param("joint5", custom_controller_offset_[3], 0.0);
   nh_custom_controller_offset.param("joint6", custom_controller_offset_[4], 0.0);
-  ros::NodeHandle nh_custom_controller_joint1(nh, "custom_controller_joint1");
+  ros::NodeHandle nh_custom_controller_joint1(nh, "custom_controller_to_joint1");
   nh_custom_controller_joint1.param("custom_dead_zone", custom_dead_zone_, 0.08);
   nh_custom_controller_joint1.param("custom_speed_scale", custom_speed_scale_, 0.1);
   // Vel
@@ -242,6 +242,11 @@ void Engineer2Manual::updateCustomController()
 {
   trajectory_msgs::JointTrajectoryPoint joint_trajectory_point;
   trajectory_msgs::JointTrajectory joint_trajectory;
+  joint1_state_ = joint_state_.position[0];
+  if( abs(custom_joint_state_[5]) > custom_dead_zone_ )
+  {
+    joint1_state_ += custom_joint_state_[5] * custom_speed_scale_;
+  }
   joint_trajectory.header.seq = custom_seq_;
   joint_trajectory.header.stamp = ros::Time::now();
   joint_trajectory.joint_names = { "joint1", "joint2", "joint3", "joint4", "joint5", "joint6" };
@@ -258,20 +263,12 @@ void Engineer2Manual::updateCustomController()
     custom_seq_ = 1;
 }
 
-void Engineer2Manual::updateJoint1(const rm_msgs::DbusData::ConstPtr &dubs_data)
-{
-  joint1_state_ = joint_state_.position[0];
-  joint1_state_ += (dubs_data->ch_l_y) * rc_speed_scale_;
-}
-
 void Engineer2Manual::dbusDataCallback(const rm_msgs::DbusData::ConstPtr& data)
 {
   ManualBase::dbusDataCallback(data);
   chassis_cmd_sender_->updateRefereeStatus(referee_is_online_);
   if (servo_mode_ == SERVO)
     updateServo(data);
-  if (servo_mode_ == CUSTOM)
-    updateJoint1(data);
 }
 
 void Engineer2Manual::stoneNumCallback(const std_msgs::String::ConstPtr& data)
@@ -289,9 +286,9 @@ void Engineer2Manual::gpioStateCallback(const rm_msgs::GpioData::ConstPtr& data)
 
 void Engineer2Manual::customControllerCallback(const std_msgs::Float64MultiArray::ConstPtr& custom_data)
 {
-  double m_data = 0.0;
-  for( int i = 0; i < 5; i++ )
+  for( int i = 0; i < 6; i++ )
   {
+    double m_data = 0.0;
     m_data = custom_data->data[i] + custom_data_offset_[i];
     if( m_data >= 6.28 )
       m_data -= 6.28;
@@ -300,11 +297,6 @@ void Engineer2Manual::customControllerCallback(const std_msgs::Float64MultiArray
     m_data *= custom_joints_orientation_[i];
     m_data += custom_controller_offset_[i];
     custom_joint_state_[i] = m_data;
-  }
-  m_data = custom_data->data[5] + custom_data_offset_[5];
-  if( m_data > custom_dead_zone_ && m_data < -custom_dead_zone_ ){
-    joint1_state_ = joint_state_.position[0];
-    joint1_state_ += m_data * custom_speed_scale_;
   }
 }
 
