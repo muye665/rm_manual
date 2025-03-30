@@ -36,6 +36,7 @@ Engineer2Manual::Engineer2Manual(ros::NodeHandle& nh, ros::NodeHandle& nh_refere
   nh_custom_data_offset.param("data5_offset", custom_data_offset_[4], 0.0);
   nh_custom_data_offset.param("data6_offset", custom_data_offset_[5], 0.0);
   ros::NodeHandle nh_custom_controller_offset(nh, "custom_controller_offset");
+  nh_custom_controller_offset.param("joint1", custom_controller_offset_[5], 0.0);
   nh_custom_controller_offset.param("joint2", custom_controller_offset_[0], 0.0);
   nh_custom_controller_offset.param("joint3", custom_controller_offset_[1], 0.0);
   nh_custom_controller_offset.param("joint4", custom_controller_offset_[2], 0.0);
