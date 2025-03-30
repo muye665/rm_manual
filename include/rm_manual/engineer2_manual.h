@@ -162,7 +162,7 @@ private:
 
   std::string prefix_{}, root_{}, exchange_direction_{ "left" }, exchange_arm_position_{ "normal" };
   int operating_mode_{}, servo_mode_{ 1 }, gimbal_mode_{}, gimbal_direction_{ 0 }, custom_seq_{ 1 }, small_arm_stone_{ 0 },
-      custom_joints_orientation_[6]{ 1, 1, 1, -1, -1};
+      custom_joints_orientation_[5]{ 1, 1, 1, -1, -1};
 
   std::stack<std::string> stone_num_{};
 
